@@ -1,0 +1,9 @@
+import {randomBytes,pbkdf2Sync} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+if(!process.stdin.isTTY)throw new Error('Chạy trực tiếp trong cửa sổ terminal.');
+async function hidden(prompt){process.stdout.write(prompt);return new Promise(resolve=>{let value='';process.stdin.setRawMode(true);process.stdin.resume();const read=chunk=>{for(const c of chunk.toString()){if(c==='\r'||c==='\n'){process.stdin.off('data',read);process.stdin.setRawMode(false);process.stdin.pause();process.stdout.write('\n');resolve(value);return;}if(c==='\u0003'){process.stdin.setRawMode(false);process.exit(1);}if(c==='\u007f'||c==='\b')value=value.slice(0,-1);else if(c>=' ')value+=c;}};process.stdin.on('data',read);});}
+console.log('Đặt lại mật khẩu Admin MAKINO. Không thay đổi dữ liệu kho.');
+const password=await hidden('Nhập mật khẩu bạn muốn dùng (ẩn ký tự): ');const repeat=await hidden('Nhập lại mật khẩu để xác nhận: ');
+if(password!==repeat)throw new Error('Hai lần nhập không trùng nhau. Hãy mở lại công cụ.');if(password.length<8||password.length>200)throw new Error('Mật khẩu cần từ 8–200 ký tự.');
+const salt=randomBytes(16).toString('hex');const hash='pbkdf2:100000:'+salt+':'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex');const r=spawnSync('clip.exe',{input:hash,encoding:'utf8'});if(r.status!==0)throw new Error('Không sao chép được vào clipboard. Hãy chạy bằng Windows.');
+console.log('\nĐÃ SAO CHÉP giá trị vào clipboard, không hiển thị khóa trên màn hình.');console.log('1. Cloudflare > quanlytool > Settings > Variables and Secrets.');console.log('2. Nhấn bút chì ở ADMIN_PASSWORD_HASH.');console.log('3. Dán Ctrl+V vào Value, giữ Type là Secret.');console.log('4. Lưu và deploy. Đợi hoàn tất rồi đăng nhập bằng mật khẩu vừa nhập.');console.log('Không đổi SESSION_SECRET hoặc database. Không cần sao chép gì từ cửa sổ này.');
