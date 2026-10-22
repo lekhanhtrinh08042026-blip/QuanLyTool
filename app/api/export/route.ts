@@ -1,0 +1,5 @@
+import { env } from 'cloudflare:workers';
+import { currentUser } from '../../../lib/session';
+import { workbook } from '../../../lib/excel';
+import type { State } from '../../../lib/model';
+export async function GET(){const u=await currentUser();if(u?.role!=='admin')return Response.json({error:'Chỉ Admin được xuất Excel'},{status:403});const db=(env as Cloudflare.Env).DB;if(!db)return Response.json({error:'Chưa kết nối database'},{status:503});const row=await db.prepare('SELECT data FROM warehouse WHERE id=?').bind('main').first<{data:string}>();const s:State=row?JSON.parse(row.data):{items:[]};const rows:(string|number)[][]=[['Mã','Tên vật tư','Tên tắt','Phân loại','Đơn vị','Tổng số lượng','Sẵn sàng','Cần kiểm tra','Vị trí','Hiện trạng'],...s.items.filter(i=>!i.deleted).map(i=>[i.id,i.name,i.aliases,i.category,i.unit,i.total,i.available,i.repair,i.location,i.condition||'Tốt'])];const bytes=workbook(rows);return new Response(bytes.buffer as ArrayBuffer,{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="MAKINO-ton-kho.xlsx"','Cache-Control':'no-store'}});}

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {pbkdf2Sync,randomBytes} from 'node:crypto';
+import {signSession,readSession,verifyPassword,passwordVersion,cookie,normalizeEmail,validEmail,sameOrigin} from '../lib/auth-core.ts';
+const salt=randomBytes(16).toString('hex');const hash='pbkdf2:100000:'+salt+':'+pbkdf2Sync('test-only-password',salt,100000,32,'sha256').toString('hex');const secret=randomBytes(48).toString('hex');let count=0;
+const test=async(name,fn)=>{await fn();count++;console.log('PASS '+name)};
+await test('Password hash accepts correct and rejects wrong',async()=>{assert.equal(await verifyPassword('test-only-password',hash),true);assert.equal(await verifyPassword('wrong',hash),false)});
+const admin={userId:'admin',email:'admin@makino.local',displayName:'Chủ kho',role:'admin',exp:Date.now()+86400000,version:await passwordVersion(hash)};const token=await signSession(admin,secret);
+await test('Unicode admin signed session',async()=>assert.equal((await readSession(token,secret,hash)).displayName,'Chủ kho'));
+await test('Tampered session rejected',async()=>{const [b,s]=token.split('.');assert.equal(await readSession(b+'.'+(s[0]==='a'?'b':'a')+s.slice(1),secret,hash),null)});
+await test('Secret rotation invalidates session',async()=>assert.equal(await readSession(token,randomBytes(48).toString('hex'),hash),null));
+await test('Password change invalidates admin session',async()=>assert.equal(await readSession(token,secret,'different'),null));
+await test('Expired session rejected',async()=>assert.equal(await readSession(await signSession({...admin,exp:Date.now()-1},secret),secret,hash),null));
+await test('User token stays borrower',async()=>{const user={userId:'email:a@gmail.com',email:'a@gmail.com',displayName:'a',role:'borrower',exp:Date.now()+86400000,version:''};assert.equal((await readSession(await signSession(user,secret),secret,hash)).role,'borrower')});
+await test('Cookie flags and CSRF origin',async()=>{assert.match(cookie(token,true),/HttpOnly/);assert.match(cookie(token,true),/Secure/);assert.match(cookie(token,true),/SameSite=Lax/);assert.equal(sameOrigin(new Request('https://example.test/api/auth',{headers:{origin:'https://evil.test'}})),false)});
+await test('Email normalized and validated',async()=>{assert.equal(normalizeEmail(' A@Gmail.com '),'a@gmail.com');assert.equal(validEmail('wrong'),false)});
+console.log(count+' auth checks passed');

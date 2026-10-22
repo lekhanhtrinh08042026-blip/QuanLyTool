@@ -1,0 +1,1 @@
+{"name":"quanlytool","main":"worker/index.ts","compatibility_date":"2026-05-15","compatibility_flags":["nodejs_compat"],"assets":{"directory":"dist/client"},"vars":{"APP_AUTH_MODE":"email"},"observability":{"enabled":true}}
