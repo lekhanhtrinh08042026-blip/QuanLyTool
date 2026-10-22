@@ -1,1 +1,25 @@
-{"name":"quanlytool","main":"worker/index.ts","compatibility_date":"2026-05-15","compatibility_flags":["nodejs_compat"],"assets":{"directory":"dist/client"},"vars":{"APP_AUTH_MODE":"email"},"observability":{"enabled":true}}
+{
+  "name": "quanlytool",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "dist/client"
+  },
+  "vars": {
+    "APP_AUTH_MODE": "email"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "makino-kho-db",
+      "database_id": "d7247077-d18f-42d1-8a84-a49e314e532a",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}
