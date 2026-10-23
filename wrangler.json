@@ -10,7 +10,7 @@
   },
   "vars": {
     "APP_AUTH_MODE": "email",
-    "TEMP_ADMIN_NO_PASSWORD_UNTIL": "2026-10-23T01:17:45.000Z"
+    "TEMP_ADMIN_NO_PASSWORD_UNTIL": "2026-10-23T17:00:00.000Z"
   },
   "observability": {
     "enabled": true
