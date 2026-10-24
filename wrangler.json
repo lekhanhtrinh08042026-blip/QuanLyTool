@@ -9,8 +9,7 @@
     "directory": "dist/client"
   },
   "vars": {
-    "APP_AUTH_MODE": "email",
-    "TEMP_ADMIN_NO_PASSWORD_UNTIL": "2026-10-23T17:00:00.000Z"
+    "APP_AUTH_MODE": "email"
   },
   "observability": {
     "enabled": true
