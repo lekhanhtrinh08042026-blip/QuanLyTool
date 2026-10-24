@@ -7,14 +7,21 @@ const stamp = (at:string) => new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_
 const day = (d:string) => d.split('-').reverse().join('/');
 export function orderText(o:Order, at:string, event:string, overdue=false) {
  const lines = overdue ? o.lines.filter(l=>l.qty>l.returned&&l.due<localDay(at)) : o.lines;
- return ['MAKINO - KHO VẬT TƯ', event, 'Mã đơn: '+o.id, 'Cập nhật: '+stamp(at)+' (giờ Việt Nam)', 'Người mượn: '+o.userEmail, 'Khách hàng / Máy: '+o.customer, 'Mục đích: '+o.purpose, 'Trạng thái: '+(o.status==='completed'?'Đã trả hết':o.status==='cancelled'?'Đã hủy':'Đang mượn'), '', ...lines.map(l=>l.name+' ['+l.itemId+'] | Mượn: '+l.qty+' | Đã trả: '+l.returned+' | Còn giữ: '+(l.qty-l.returned)+' | Hẹn trả: '+day(l.due)+' | Hiện trạng lúc mượn: '+l.condition), '', 'Mở app: https://quanlytool.lekhanhtrinh15082022.workers.dev'].join('\n');
+ return ['MAKINO - KHO VẬT TƯ', event, 'Mã đơn: '+o.id, 'Cập nhật: '+stamp(at)+' (giờ Việt Nam)', 'Kỹ sư: '+(o.name||o.userEmail), 'Gmail: '+o.userEmail, 'Job: '+o.customer, 'Machine Problem: '+o.purpose, 'Trạng thái: '+(o.status==='completed'?'Đã trả hết':o.status==='cancelled'?'Đã hủy':'Đang mượn'), '', ...lines.map(l=>l.name+' ['+l.itemId+'] | Mượn: '+l.qty+' | Đã trả: '+l.returned+' | Còn giữ: '+(l.qty-l.returned)+' | Hẹn trả: '+day(l.due)+' | Hiện trạng lúc mượn: '+l.condition), '', 'Mở app: https://quanlytool.lekhanhtrinh15082022.workers.dev'].join('\n');
+}
+const escapeHtml = (value:unknown) => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+export function orderHtml(o:Order,at:string,event:string,overdue=false){
+ const esc=escapeHtml, lines=overdue?o.lines.filter(l=>l.qty>l.returned&&l.due<localDay(at)):o.lines;
+ const cell='padding:9px 7px;border-bottom:1px solid #dce5ee;text-align:left;vertical-align:top;';
+ const row=(label:string,value:string)=>'<p style="margin:6px 0"><b>'+esc(label)+':</b> '+esc(value)+'</p>';
+ return '<!doctype html><html lang="vi"><body style="margin:0;padding:16px;background:#f1f5f9;font-family:Arial,sans-serif;color:#18334d"><div style="max-width:720px;margin:auto;background:white;padding:20px;border-radius:12px"><h2 style="color:#1565b0;margin-top:0">MAKINO · Kho vật tư</h2><p>'+esc(event)+'</p>'+row('Kỹ sư',o.name||o.userEmail)+row('Gmail',o.userEmail)+row('Job',o.customer)+row('Machine Problem',o.purpose)+row('Đơn',o.id)+row('Cập nhật',stamp(at)+' · Giờ Việt Nam')+'<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:18px"><thead><tr style="background:#eaf3fc">'+['Vật tư','Mượn','Đã trả','Còn','Hẹn trả'].map(h=>'<th style="'+cell+'">'+h+'</th>').join('')+'</tr></thead><tbody>'+lines.map(l=>'<tr><td style="'+cell+'"><b>'+esc(l.name)+'</b><br><span style="color:#60788e">'+esc(l.itemId)+'</span><br>'+esc(l.condition.slice(0,160))+'</td>'+[l.qty,l.returned,l.qty-l.returned,day(l.due)].map(v=>'<td style="'+cell+'">'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table><p style="margin-top:20px"><a href="https://quanlytool.lekhanhtrinh15082022.workers.dev" style="color:#1565b0">Mở kho vật tư MAKINO</a></p></div></body></html>';
 }
 export function localDay(at:string) { return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(at)); }
 export function overdueNotices(s:State, now=new Date()):Notice[] {
  const at=now.toISOString(), date=localDay(at);
  // Chỉ nhắc từ 08:00 Việt Nam; ngày trả chỉ có ngày nên quá hạn từ ngày kế tiếp.
  if (new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',hourCycle:'h23'}).format(now)<'08') return [];
- return s.orders.filter(o=>['borrowed','return_pending'].includes(o.status)&&o.lines.some(l=>l.qty>l.returned&&l.due<date)).map(o=>({id:'overdue:'+o.id+':'+date,at,subject:'[MAKINO] Quá hạn trả '+o.id,status:'Đang chờ gửi',to:recipientsFor(s,o.userEmail),text:orderText(o,at,'Nhắc trả vật tư quá hạn',true)}));
+ return s.orders.filter(o=>['borrowed','return_pending'].includes(o.status)&&o.lines.some(l=>l.qty>l.returned&&l.due<date)).map(o=>({id:'overdue:'+o.id+':'+date,at,subject:'[MAKINO] Quá hạn trả '+o.id,status:'Đang chờ gửi',to:recipientsFor(s,o.userEmail),text:orderText(o,at,'Nhắc trả vật tư quá hạn',true),html:orderHtml(o,at,'Nhắc trả vật tư quá hạn',true)}));
 }
 export function mailConfigured(e:Cloudflare.Env) { return !!(e.MAIL_SECRET&&e.MAIL_SECRET.length>=32&&e.MAIL_WEBHOOK_URL&&/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(e.MAIL_WEBHOOK_URL)); }
 async function schema(db:D1Database) {
@@ -30,7 +37,7 @@ export async function mailCycle(e:Cloudflare.Env, reminders=false) {
  const known=new Set((await db.prepare('SELECT id FROM mail_jobs').all<{id:string}>()).results.map(r=>r.id));
  for(const n of notices)for(const to of n.to.filter(validEmail)) {
    const id=await jobId(n.id!,to); if(known.has(id))continue;
-   await db.prepare('INSERT OR IGNORE INTO mail_jobs(id,event_id,recipient,subject,body,created) VALUES(?,?,?,?,?,?)').bind(id,n.id!,to,n.subject.slice(0,200),n.text!.slice(0,20000),n.at).run();known.add(id);
+   await db.prepare('INSERT OR IGNORE INTO mail_jobs(id,event_id,recipient,subject,body,created) VALUES(?,?,?,?,?,?)').bind(id,n.id!,to,n.subject.slice(0,200),JSON.stringify({text:n.text!.slice(0,20000),html:n.html&&n.html.length<=100000?n.html:undefined}),n.at).run();known.add(id);
  }
  const now=Date.now();
  const jobs=await db.prepare("SELECT * FROM mail_jobs WHERE status='pending' AND next_attempt<=? AND lease_until<? ORDER BY created,id LIMIT 8").bind(now,now).all<{id:string;event_id:string;recipient:string;subject:string;body:string;attempts:number}>();
@@ -47,7 +54,8 @@ export async function mailCycle(e:Cloudflare.Env, reminders=false) {
    if(!claim.meta.changes)continue;
    let error='NETWORK';
    try {
-     const res=await fetch(e.MAIL_WEBHOOK_URL!,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret:e.MAIL_SECRET,id:job.id,to:[job.recipient],subject:job.subject,text:job.body}),signal:AbortSignal.timeout(8000),redirect:'follow'});
+     let content:{text:string;html?:string}={text:job.body};try{const parsed=JSON.parse(job.body);if(typeof parsed.text==='string')content=parsed;}catch{}
+     const res=await fetch(e.MAIL_WEBHOOK_URL!,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret:e.MAIL_SECRET,id:job.id,to:[job.recipient],subject:job.subject,text:content.text,html:content.html}),signal:AbortSignal.timeout(8000),redirect:'follow'});
      const data:any=await res.json();
      if(res.ok&&data.ok===true){await db.prepare("UPDATE mail_jobs SET status='sent',lease_until=0,error='' WHERE id=?").bind(job.id).run();continue;}
      error=['UNAUTHORIZED','DAILY_QUOTA','BUSY','INVALID_REQUEST','INVALID_ID','INVALID_RECIPIENT','INVALID_MESSAGE','SEND_FAILED'].includes(data.error)?data.error:'WEBHOOK';

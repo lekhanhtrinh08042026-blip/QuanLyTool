@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+const dir=new URL('../.sites-runtime/profile-auth-tests/',import.meta.url);fs.mkdirSync(dir,{recursive:true});
+for(const f of ['profiles.ts','auth-core.ts'])fs.copyFileSync(new URL('../lib/'+f,import.meta.url),new URL(f,dir));
+const sql=new DatabaseSync(':memory:');sql.exec('CREATE TABLE warehouse(id TEXT PRIMARY KEY,data TEXT); CREATE TABLE login_limits(id TEXT PRIMARY KEY,window INTEGER,count INTEGER);');sql.prepare('INSERT INTO warehouse VALUES(?,?)').run('main',JSON.stringify({members:[{email:'engineer@example.com'}]}));
+const db={prepare(query){let args=[];return {bind(...v){args=v;return this;},async first(){return sql.prepare(query).get(...args)||null;},async run(){return sql.prepare(query).run(...args);}}}};
+globalThis.__profileEnv={DB:db,SESSION_SECRET:'x'.repeat(64),ADMIN_PASSWORD_HASH:'pbkdf2:100000:'+'a'.repeat(32)+':'+'b'.repeat(64)};
+let code=fs.readFileSync(new URL('../app/api/auth/route.ts',import.meta.url),'utf8').replace("import { env } from 'cloudflare:workers';",'const env=globalThis.__profileEnv;').replace("import { signingSecret } from '../../../lib/runtime-auth';",'const signingSecret=async e=>e.SESSION_SECRET;').replaceAll("'../../../lib/profiles'","'./profiles.ts'").replaceAll("'../../../lib/auth-core'","'./auth-core.ts'");
+fs.writeFileSync(new URL('auth.ts',dir),code);const {POST}=await import(new URL('auth.ts',dir));const {readSession}=await import(new URL('auth-core.ts',dir));
+const request=body=>new Request('https://app.example/api/auth',{method:'POST',headers:{Origin:'https://app.example','Content-Type':'application/json'},body:JSON.stringify(body)});
+let r=await POST(request({role:'borrower',email:'engineer@example.com'}));assert.equal((await r.json()).needsName,true);assert.equal(r.headers.get('set-cookie'),null);
+r=await POST(request({role:'borrower',email:'not-allowed@example.com',displayName:'Forbidden'}));assert.equal(r.status,403);assert.equal(sql.prepare('SELECT count(*) AS n FROM user_profiles').get().n,0);
+r=await POST(request({role:'borrower',email:'engineer@example.com',displayName:'A'}));assert.equal(r.status,400);
+r=await POST(request({role:'borrower',email:' ENGINEER@example.com ',displayName:'Nguyễn Văn An'}));assert.equal(r.status,200);let token=r.headers.get('set-cookie').split(';')[0].split('=')[1];let u=await readSession(token,globalThis.__profileEnv.SESSION_SECRET,globalThis.__profileEnv.ADMIN_PASSWORD_HASH);assert.equal(u.displayName,'Nguyễn Văn An');assert.equal(u.role,'borrower');
+r=await POST(request({role:'borrower',email:'engineer@example.com'}));assert.equal(r.status,200);assert.equal((await r.json()).needsName,undefined);assert.ok(r.headers.get('set-cookie'));
+console.log('PASS first Gmail login requires name without session; denied emails cannot register; saved name reused and signed into borrower session');

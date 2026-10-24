@@ -1,9 +1,9 @@
 import { State, emptyState, samples, today } from './model';
-import { orderText, recipientsFor } from './mail';
+import { orderText, orderHtml, recipientsFor } from './mail';
 export function mutate(s:State,a:any,u:{userId:string;email:string;displayName:string},admin:boolean){
  const fail=(m:string):never=>{throw new Error(m)}; const now=new Date().toISOString();
  const log=(text:string)=>{s.audit.unshift({at:now,by:u.email,text});};
- const notify=(subject:string,order:State['orders'][number])=>s.outbox.unshift({id:crypto.randomUUID(),at:now,subject:'[MAKINO] '+subject,status:'Đang chờ gửi',to:recipientsFor(s,order.userEmail),text:orderText(order,now,subject)});
+ const notify=(subject:string,order:State['orders'][number])=>s.outbox.unshift({id:crypto.randomUUID(),at:now,subject:'[MAKINO] '+subject,status:'Đang chờ gửi',to:recipientsFor(s,order.userEmail),text:orderText(order,now,subject),html:orderHtml(order,now,subject)});
  const item=(id:string)=>s.items.find(i=>i.id===id&&!i.deleted)||fail('Không tìm thấy vật tư');
  const positive=(n:any)=>{if(!Number.isSafeInteger(n)||n<1||n>1000000)fail('Số lượng không hợp lệ');return n as number;};
  const date=(d:any)=>{if(typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d)||(Number.isNaN(Date.parse(d+'T00:00:00Z'))||new Date(d+'T00:00:00Z').toISOString().slice(0,10)!==d)||d<today())fail('Ngày trả không hợp lệ');return d;};
@@ -27,7 +27,7 @@ export function mutate(s:State,a:any,u:{userId:string;email:string;displayName:s
  if(typeof a.key!=='string'||a.key.length>100)fail('Mã yêu cầu không hợp lệ');
  if(!Array.isArray(a.lines)||!a.lines.length||a.lines.length>100)fail('Chưa chọn vật tư');
  const ids=new Set<string>();const lines=a.lines.map((l:any)=>{if(ids.has(l.itemId))fail('Vật tư bị trùng');ids.add(l.itemId);const i=item(l.itemId),qty=positive(l.qty);if(qty>i.available)fail(i.name+' không đủ số lượng');return {itemId:i.id,name:i.name,qty,returned:0,due:date(l.due),condition:l.condition==='Khác'?'Khác: '+String(l.reason||'').trim().slice(0,1000):'Tốt'};});if(a.lines.some((l:any)=>l.condition==='Khác'&&!l.reason?.trim()))fail('Cần mô tả tình trạng khác');
- if(!a.customer?.trim()||!a.purpose?.trim())fail('Cần nhập khách hàng/máy và mục đích');
+ if(!a.customer?.trim()||!a.purpose?.trim())fail('Cần nhập Job và Machine Problem');
  for(const l of lines)item(l.itemId).available-=l.qty;
  s.counter++;const id='M-'+String(s.counter).padStart(6,'0');s.orders.unshift({id,key:a.key,userId:u.userId,userEmail:u.email,name:u.displayName,customer:String(a.customer).slice(0,200),purpose:String(a.purpose).slice(0,500),created:now,status:'borrowed',lines,history:[{at:now,by:u.email,text:'Đã xác nhận mượn trực tiếp'}]});log('Mượn trực tiếp '+id);notify('Đã mượn '+id,s.orders[0]);return;}
  const o=s.orders.find(o=>o.id===a.id)||fail('Không tìm thấy đơn');

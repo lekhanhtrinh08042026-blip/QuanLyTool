@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+const dir=new URL('../.sites-runtime/profile-tests/',import.meta.url);fs.mkdirSync(dir,{recursive:true});fs.copyFileSync(new URL('../lib/profiles.ts',import.meta.url),new URL('profiles.ts',dir));
+const {fullName,profileName,registerName}=await import(new URL('profiles.ts',dir));
+const sql=new DatabaseSync(':memory:');
+const db={prepare(query){let args=[];return {bind(...v){args=v;return this;},async first(){return sql.prepare(query).get(...args)||null;},async run(){return sql.prepare(query).run(...args);}}}};
+assert.equal(await profileName(db,'a@example.com'),'');
+assert.equal(await registerName(db,'a@example.com','  Nguyễn   Văn An  '),'Nguyễn Văn An');
+assert.equal(await profileName(db,'a@example.com'),'Nguyễn Văn An');
+assert.equal(await registerName(db,'a@example.com','Tên khác'),'Nguyễn Văn An');
+assert.equal(await profileName(db,'b@example.com'),'');
+for(const name of ['', ' ', 'A', 'a'.repeat(101),'<script>x</script>','An\u200bNguyen'])assert.throws(()=>fullName(name));
+assert.equal(fullName('Nguyễn Văn An'),'Nguyễn Văn An');
+console.log('PASS required names, Unicode normalization, persisted names per Gmail, no concurrent overwrite');

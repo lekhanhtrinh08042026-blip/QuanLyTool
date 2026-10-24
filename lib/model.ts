@@ -1,7 +1,7 @@
 export type Item={deleted?:boolean;condition?:string;conditionImages?:string[];id:string;name:string;aliases:string;category:string;unit:string;total:number;available:number;repair:number;location:string;image:string;notes:{at:string;by:string;text:string;image?:string;images?:string[]}[]};
 export type Line={itemId:string;name:string;qty:number;returned:number;due:string;condition:string};
 export type Order={returnKeys?:string[];id:string;key:string;userId:string;userEmail:string;name:string;customer:string;purpose:string;created:string;status:string;lines:Line[];returnRequest?:{itemId:string;qty:number;bad:number;reason:string}[];extension?:{date:string;reason:string};history:{at:string;by:string;text:string}[]};
-export type State={categories?:string[];items:Item[];orders:Order[];members:{email:string;role:string}[];recipients:string[];audit:{at:string;by:string;text:string}[];outbox:{id?:string;text?:string;at:string;subject:string;status:string;to:string[]}[];counter:number};
+export type State={categories?:string[];items:Item[];orders:Order[];members:{email:string;role:string}[];recipients:string[];audit:{at:string;by:string;text:string}[];outbox:{id?:string;text?:string;html?:string;at:string;subject:string;status:string;to:string[]}[];counter:number};
 export const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export const emptyState=():State=>({items:[],orders:[],members:[],recipients:[],audit:[],outbox:[],counter:0});
 export function samples():Item[]{return [
