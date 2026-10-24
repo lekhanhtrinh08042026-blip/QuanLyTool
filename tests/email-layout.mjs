@@ -1,0 +1,17 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const dir=new URL('../.sites-runtime/email-layout-tests/',import.meta.url);fs.mkdirSync(dir,{recursive:true});fs.copyFileSync(new URL('../lib/mail.ts',import.meta.url),new URL('mail.ts',dir));
+const {orderHtml,orderText}=await import(new URL('mail.ts',dir));
+const names=['Đá 500×500','Leveling (New)','Test Bar A63','Đá 300×300','Leveling điện tử','Xe đẩy','Test Bar A63 (cũ)'];
+const o={id:'M-000008',name:'Lê Khánh Trình',userEmail:'engineer@example.com',customer:'ABCD',purpose:'Sửa máy',status:'borrowed',lines:names.map((name,i)=>({itemId:'04-000'+(i+1),name,qty:1,returned:0,due:'2026-10-24',condition:'Tốt'}))};
+const at='2026-10-24T07:48:00Z';
+let html=orderHtml(o,at,'Đã mượn '+o.id);assert.match(html,/MAKINO · FSE HCM/);assert.match(html,/>Lê Khánh Trình<\/div>/);assert.match(html,/font-weight:800/);assert.match(html,/<strong[^>]*>Đá 500×500<\/strong>/);assert.equal((html.match(/<th /g)||[]).length,2);assert.equal((html.match(/24\/10\/2026/g)||[]).length,2);assert.ok(!html.includes('ĐÃ TRẢ'));assert.match(html,/HẸN TRẢ TẤT CẢ VẬT TƯ/);assert.ok(html.length<100000);
+if(process.env.WRITE_EMAIL_PREVIEW)fs.writeFileSync(new URL('../../../outputs/MAKINO-email-preview.html',import.meta.url),html);
+const partial={...o,lines:o.lines.map((l,i)=>({...l,returned:i?0:1}))};html=orderHtml(partial,at,'Đã trả trực tiếp');assert.match(html,/Trả một phần/);assert.equal((html.match(/<th /g)||[]).length,4);assert.match(html,/ĐÃ TRẢ/);assert.match(html,/HẸN TRẢ PHẦN CÒN LẠI/);
+if(process.env.WRITE_EMAIL_PREVIEW)fs.writeFileSync(new URL('../../../outputs/MAKINO-email-return-preview.html',import.meta.url),html);
+html=orderHtml({...partial,status:'completed',lines:o.lines.map(l=>({...l,returned:1}))},at,'Đã trả trực tiếp');assert.match(html,/Đã trả hết/);assert.ok(!html.includes('HẸN TRẢ PHẦN CÒN LẠI'));
+html=orderHtml({...o,lines:o.lines.map((l,i)=>({...l,due:i?'2026-10-25':'2026-10-24'}))},at,'Đã mượn');assert.ok(!html.includes('HẸN TRẢ TẤT CẢ'));assert.match(html,/Hẹn trả: <b>25\/10\/2026/);
+html=orderHtml({...o,lines:[{...o.lines[0],condition:'Khác: xước <vỏ>'}]},at,'Đã mượn');assert.match(html,/xước &lt;vỏ&gt;/);assert.ok(!html.includes('Tất cả vật tư tốt'));
+html=orderHtml({...o,name:'<img src=x>',purpose:'<script>oops</script>'},at,'Đã mượn');assert.ok(!html.includes('<script>'));assert.match(html,/&lt;img/);
+html=orderHtml(o,'2026-10-25T02:00:00Z','Nhắc trả',true);assert.equal((html.match(/<th /g)||[]).length,2);assert.match(html,/CÒN GIỮ/);assert.match(html,/QUÁ HẠN/);
+const text=orderText(o,at,'Đã mượn');assert.ok(!text.includes(' | '));assert.ok(!text.includes('Đã trả: 0'));assert.match(text,/Số lượng mượn: 1/);
+console.log('PASS bold names, compact borrowing table, common and mixed deadlines, partial/full returns, overdue, condition exceptions, escaping and readable plain-text fallback');
