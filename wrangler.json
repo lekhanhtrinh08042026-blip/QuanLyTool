@@ -9,7 +9,8 @@
     "directory": "dist/client"
   },
   "vars": {
-    "APP_AUTH_MODE": "email"
+    "APP_AUTH_MODE": "email",
+    "MAIL_WEBHOOK_URL": "https://script.google.com/macros/s/AKfycbwJG6NeTQtLNysHzhkf1gAzCZwnAi7Psg77hhBYz8m-aYZwkSfVU9OXlVddYyhGGbZQaw/exec"
   },
   "observability": {
     "enabled": true
@@ -21,5 +22,10 @@
       "database_id": "d7247077-d18f-42d1-8a84-a49e314e532a",
       "migrations_dir": "drizzle"
     }
-  ]
+  ],
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  }
 }

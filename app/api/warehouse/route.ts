@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { currentUser } from '../../../lib/session';
 import { normalizeEmail,sameOrigin } from '../../../lib/auth-core';
 import { emptyState,State } from '../../../lib/model';
+import { emailOverview } from '../../../lib/mail';
 import { mutate } from '../../../lib/operations';
 export const dynamic='force-dynamic';
 export async function GET(){return handle();}
@@ -18,6 +19,7 @@ async function handle(req?:Request){
  if(a.type==='member'){a.email=normalizeEmail(a.email);a.role='borrower';}
  if(a.type==='removeMember'){if(!admin)return Response.json({error:'Chỉ Admin được quản lý Gmail'},{status:403});s.members=s.members.filter(m=>normalizeEmail(m.email)!==normalizeEmail(a.email));s.audit.unshift({at:new Date().toISOString(),by:u.email,text:'Gỡ quyền Gmail '+normalizeEmail(a.email)});}else mutate(s,a,u,admin);
  const serialized=JSON.stringify(s);if(new TextEncoder().encode(serialized).length>1800000)return Response.json({error:'Dữ liệu bản thử đã gần giới hạn. Cần nâng cấp cấu trúc lưu trữ trước khi tiếp tục.'},{status:413});const result=await db.prepare('UPDATE warehouse SET data=?,revision=revision+1 WHERE id=? AND revision=?').bind(serialized,'main',row.revision).run();if(!result.meta.changes)return Response.json({error:'Kho vừa thay đổi. Vui lòng tải lại và thử lại.'},{status:409});}
- return Response.json({items:s.items.filter(i=>!i.deleted),categories:s.categories||[...new Set(['Dụng cụ','Thiết bị đo','Phụ kiện',...s.items.map(i=>i.category)])],orders:admin?s.orders:s.orders.filter(o=>o.userId===u.userId),members:admin?s.members:[],recipients:admin?s.recipients:[],audit:admin?s.audit.slice(0,200):[],outbox:admin?s.outbox.slice(0,100):[],user:u,revision:row.revision},{headers:{'Cache-Control':'no-store'}});
+ const email=admin?await emailOverview(env as Cloudflare.Env,s.outbox):{configured:false,outbox:[]};
+ return Response.json({items:s.items.filter(i=>!i.deleted),categories:s.categories||[...new Set(['Dụng cụ','Thiết bị đo','Phụ kiện',...s.items.map(i=>i.category)])],orders:admin?s.orders:s.orders.filter(o=>o.userId===u.userId),members:admin?s.members:[],recipients:admin?s.recipients:[],audit:admin?s.audit.slice(0,200):[],outbox:email.outbox,emailConfigured:email.configured,user:u,revision:row.revision},{headers:{'Cache-Control':'no-store'}});
  }catch(error){console.error('Warehouse operation failed',error instanceof Error?error.name:'Unknown');return Response.json({error:error instanceof Error&&!(error.message.includes('D1')||error.message.includes('SQL'))?error.message:'Chưa thiết lập xong database cloud. Kiểm tra migration.'},{status:400});}
 }

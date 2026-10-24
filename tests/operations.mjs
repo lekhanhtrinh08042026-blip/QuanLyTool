@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const dir=new URL('../.sites-runtime/tests/',import.meta.url);fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(new URL('model.ts',dir),fs.readFileSync(new URL('../lib/model.ts',import.meta.url),'utf8'));
-fs.writeFileSync(new URL('operations.ts',dir),fs.readFileSync(new URL('../lib/operations.ts',import.meta.url),'utf8').replace("import { State, emptyState, samples, today } from './model';","import { samples, today } from './model.ts';\nimport type { State } from './model.ts';"));
+fs.writeFileSync(new URL('mail.ts',dir),fs.readFileSync(new URL('../lib/mail.ts',import.meta.url),'utf8'));
+fs.writeFileSync(new URL('operations.ts',dir),fs.readFileSync(new URL('../lib/operations.ts',import.meta.url),'utf8').replace("from './mail'","from './mail.ts'").replace("import { State, emptyState, samples, today } from './model';","import { samples, today } from './model.ts';\nimport type { State } from './model.ts';"));
 const {emptyState,today}=await import(new URL('model.ts',dir));const {mutate}=await import(new URL('operations.ts',dir));
 const owner={userId:'owner',email:'owner@example.test',displayName:'Owner'},a={userId:'a',email:'a@example.test',displayName:'A'},b={userId:'b',email:'b@example.test',displayName:'B'};let checks=0;
 const ok=(name,fn)=>{fn();checks++;console.log('PASS '+name)};
