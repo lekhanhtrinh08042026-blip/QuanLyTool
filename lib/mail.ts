@@ -45,7 +45,12 @@ export function overdueNotices(s:State, now=new Date()):Notice[] {
  if (new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',hourCycle:'h23'}).format(now)<'08') return [];
  return s.orders.filter(o=>['borrowed','return_pending'].includes(o.status)&&o.lines.some(l=>l.qty>l.returned&&l.due<date)).map(o=>({id:'overdue:'+o.id+':'+date,at,subject:'[MAKINO] Quá hạn trả '+o.id,status:'Đang chờ gửi',to:recipientsFor(s,o.userEmail),text:orderText(o,at,'Nhắc trả vật tư quá hạn',true),html:orderHtml(o,at,'Nhắc trả vật tư quá hạn',true)}));
 }
-export function mailConfigured(e:Cloudflare.Env) { return !!(e.MAIL_SECRET&&e.MAIL_SECRET.length>=32&&e.MAIL_WEBHOOK_URL&&/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(e.MAIL_WEBHOOK_URL)); }
+export function mailSetup(e:Cloudflare.Env){
+ const secret=e.MAIL_SECRET?.trim()||'',url=e.MAIL_WEBHOOK_URL?.trim()||'';
+ const message=!secret?'Thiếu MAIL_SECRET trên Cloudflare. Thêm khóa dưới dạng Secret.':secret.length<32?'MAIL_SECRET chưa đúng: cần dán toàn bộ khóa từ Apps Script.':!url?'Thiếu MAIL_WEBHOOK_URL trên Cloudflare.':!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)?'MAIL_WEBHOOK_URL chưa đúng. Dùng URL ứng dụng web kết thúc bằng /exec.':'';
+ return {configured:!message,message};
+}
+export function mailConfigured(e:Cloudflare.Env){return mailSetup(e).configured;}
 async function schema(db:D1Database) {
  await db.prepare("CREATE TABLE IF NOT EXISTS mail_jobs (id TEXT PRIMARY KEY, event_id TEXT NOT NULL, recipient TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL, created TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL DEFAULT 0, lease_until INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '')").run();
 }
@@ -77,7 +82,7 @@ export async function mailCycle(e:Cloudflare.Env, reminders=false) {
    let error='NETWORK';
    try {
      let content:{text:string;html?:string}={text:job.body};try{const parsed=JSON.parse(job.body);if(typeof parsed.text==='string')content=parsed;}catch{}
-     const res=await fetch(e.MAIL_WEBHOOK_URL!,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret:e.MAIL_SECRET,id:job.id,to:[job.recipient],subject:job.subject,text:content.text,html:content.html}),signal:AbortSignal.timeout(8000),redirect:'follow'});
+     const res=await fetch(e.MAIL_WEBHOOK_URL!.trim(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret:e.MAIL_SECRET!.trim(),id:job.id,to:[job.recipient],subject:job.subject,text:content.text,html:content.html}),signal:AbortSignal.timeout(8000),redirect:'follow'});
      const data:any=await res.json();
      if(res.ok&&data.ok===true){await db.prepare("UPDATE mail_jobs SET status='sent',lease_until=0,error='' WHERE id=?").bind(job.id).run();continue;}
      error=['UNAUTHORIZED','DAILY_QUOTA','BUSY','INVALID_REQUEST','INVALID_ID','INVALID_RECIPIENT','INVALID_MESSAGE','SEND_FAILED'].includes(data.error)?data.error:'WEBHOOK';
@@ -90,8 +95,8 @@ export async function mailCycle(e:Cloudflare.Env, reminders=false) {
  }
 }
 export async function emailOverview(e:Cloudflare.Env, notices:Notice[]) {
- const configured=mailConfigured(e);
- if(!e.DB||!configured)return {configured,outbox:notices.slice(0,100).map(n=>({...n,status:n.id?'Chưa kết nối gửi Gmail':n.status}))};
+ const {configured,message}=mailSetup(e);
+ if(!e.DB||!configured)return {configured,message,outbox:notices.slice(0,100).map(n=>({...n,status:n.id?'Chưa kết nối gửi Gmail':n.status}))};
  try {
   await schema(e.DB);
   const rows=(await e.DB.prepare('SELECT event_id,subject,created,recipient,status,error FROM mail_jobs ORDER BY created DESC LIMIT 1000').all<{event_id:string;subject:string;created:string;recipient:string;status:string;error:string}>()).results;
@@ -99,6 +104,6 @@ export async function emailOverview(e:Cloudflare.Env, notices:Notice[]) {
   for(const n of notices.slice(0,100))events.set(n.id||'legacy:'+n.at+':'+n.subject,{...n});
   for(const r of rows)if(r.event_id.startsWith('overdue:')&&!events.has(r.event_id))events.set(r.event_id,{id:r.event_id,at:r.created,subject:r.subject,status:'Đang chờ gửi',to:rows.filter(x=>x.event_id===r.event_id).map(x=>x.recipient)});
   for(const [id,n]of events){if(!n.id)continue;const group=rows.filter(r=>r.event_id===id);n.status=!n.to.length?'Chưa có email nhận':!group.length?'Đang chờ gửi':group.every(r=>r.status==='sent')&&group.length>=n.to.length?'Đã gửi':group.some(r=>r.error==='UNAUTHORIZED')?'Khóa Gmail chưa khớp':group.some(r=>r.error==='DAILY_QUOTA')?'Đợi hạn mức Gmail':group.some(r=>r.status==='failed')?'Gửi lỗi':group.every(r=>r.status==='cancelled')?'Đã bỏ nhắc':'Đang chờ gửi';}
-  return {configured,outbox:[...events.values()].sort((a,b)=>b.at.localeCompare(a.at)).slice(0,100)};
- } catch {return {configured,outbox:notices.slice(0,100)};}
+  return {configured,message,outbox:[...events.values()].sort((a,b)=>b.at.localeCompare(a.at)).slice(0,100)};
+ } catch {return {configured,message,outbox:notices.slice(0,100)};}
 }
