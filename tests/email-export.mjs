@@ -1,0 +1,19 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+const dir=new URL('../.sites-runtime/email-export-tests/',import.meta.url);fs.mkdirSync(dir,{recursive:true});
+for(const f of ['excel.ts','email-export.ts'])fs.copyFileSync(new URL('../lib/'+f,import.meta.url),new URL(f,dir));
+const {emailExportRows}=await import(new URL('email-export.ts',dir));
+const state={items:[],outbox:Array.from({length:125},(_,i)=>({id:'e'+i,at:'2026-10-24T07:48:00Z',subject:i===0?'=HYPERLINK("bad")':'Đã mượn M-'+i,status:'Đang chờ gửi',to:['a@example.com','b@example.com'],text:'Kỹ sư: Nguyễn Văn An\nJob: A&B'}))};
+const job={id:'j1',event_id:'e0',recipient:'a@example.com',subject:state.outbox[0].subject,body:JSON.stringify({text:'Kỹ sư: Nguyễn Văn An',html:'<b>private markup</b>'}),created:state.outbox[0].at,status:'sent',attempts:1,error:''};
+let rows=emailExportRows(state,[job]);assert.equal(rows.length,251);assert.equal(rows.filter(r=>r[3]==='Đã gửi').length,1);assert.ok(rows.some(r=>r[0].includes('14:48:00')));assert.ok(!JSON.stringify(rows).includes('private markup'));
+const reminder={...job,id:'j2',event_id:'overdue:M-1:2026-10-24',subject:'Quá hạn',recipient:'owner@example.com',status:'pending',error:'DAILY_QUOTA'};rows=emailExportRows(state,[job,reminder]);assert.equal(rows.length,252);assert.ok(rows.some(r=>r[3]==='Đợi hạn mức Gmail'));
+const sql=new DatabaseSync(':memory:');sql.exec('CREATE TABLE warehouse(id TEXT PRIMARY KEY,data TEXT)');sql.prepare('INSERT INTO warehouse VALUES(?,?)').run('main',JSON.stringify(state));
+const db={prepare(query){let args=[];return {bind(...v){args=v;return this;},async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};}}}};
+globalThis.__exportEnv={DB:db};globalThis.__exportUser={role:'borrower'};
+let code=fs.readFileSync(new URL('../app/api/export/route.ts',import.meta.url),'utf8').replace("import { env } from 'cloudflare:workers';",'const env=globalThis.__exportEnv;').replace("import { currentUser } from '../../../lib/session';",'const currentUser=async()=>globalThis.__exportUser;').replaceAll("'../../../lib/excel'","'./excel.ts'").replaceAll("'../../../lib/email-export'","'./email-export.ts'");fs.writeFileSync(new URL('route.ts',dir),code);
+const {GET}=await import(new URL('route.ts',dir));const req=new Request('https://app.example/api/export?type=email');assert.equal((await GET(req)).status,403);globalThis.__exportUser={role:'admin'};let response=await GET(req);assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/su-kien-email/);const bytes=new Uint8Array(await response.arrayBuffer());assert.equal(new DataView(bytes.buffer).getUint32(0,true),0x04034b50);
+const files={};let offset=0;while(new DataView(bytes.buffer).getUint32(offset,true)===0x04034b50){const v=new DataView(bytes.buffer),size=v.getUint32(offset+18,true),nameLen=v.getUint16(offset+26,true),extra=v.getUint16(offset+28,true),start=offset+30+nameLen+extra;files[new TextDecoder().decode(bytes.slice(offset+30,offset+30+nameLen))]=new TextDecoder().decode(bytes.slice(start,start+size));offset=start+size;}
+assert.match(files['xl/workbook.xml'],/Su kien email/);assert.match(files['xl/worksheets/sheet1.xml'],/Nguyễn Văn An/);assert.match(files['xl/worksheets/sheet1.xml'],/A&amp;B/);assert.match(files['xl/worksheets/sheet1.xml'],/autoFilter/);assert.ok(!files['xl/worksheets/sheet1.xml'].includes('<f>'));assert.equal((files['xl/worksheets/sheet1.xml'].match(/<row /g)||[]).length,251);
+response=await GET(new Request('https://app.example/api/export'));assert.match(response.headers.get('content-disposition'),/ton-kho/);
+console.log('PASS full history beyond UI limits, per-recipient status, reminder history, Vietnam time, Admin authorization, XLSX archive and safe text cells');
